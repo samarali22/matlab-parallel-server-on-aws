@@ -1,0 +1,161 @@
+
+%%Train Residual Network for Image Classification
+%Data Sets for Deep Learning
+%Modulation Classification with Deep Learning
+%Create Simple Deep Learning Network for Classification
+%convolution2dLayer
+
+datadir = tempdir; 
+downloadCIFARData(datadir);
+
+% url = 'https://www.cs.toronto.edu/~kriz/cifar-10-matlab.tar.gz';
+% datadir = tempdir;
+% filename = fullfile(downloadFolder,'cifar-10-matlab.tar.gz');
+
+% dataFolder = fullfile(downloadFolder,'cifar-10-batches-mat');
+% if ~exist(dataFolder,'dir')
+%     fprintf("Downloading CIFAR-10 dataset (175 MB)... ");
+%     websave(filename,url);
+%     untar(filename,downloadFolder);
+%     fprintf("Done.\n")
+% end
+imageSize = [32 32 3];
+pixelRange = [-4 4];
+
+[XTrain,YTrain,XValidation,YValidation] = loadCIFARData(datadir);
+imageAugmenter = imageDataAugmenter( ...
+    'RandXReflection',true, ...
+    'RandXTranslation',pixelRange, ...
+    'RandYTranslation',pixelRange);
+augimdsTrain = augmentedImageDatastore(imageSize,XTrain,YTrain, ...
+    'DataAugmentation',imageAugmenter, ...
+    'OutputSizeMode','randcrop');
+
+
+
+
+netWidth = 16;
+layers = [
+    imageInputLayer([32 32 3],'Name','input')
+    
+    convolution2dLayer(3,netWidth,'Padding','same','Name','convInp')
+    batchNormalizationLayer('Name','BNInp')
+    reluLayer('Name','reluInp')
+    
+     convolution2dLayer(3,netWidth,'Padding','same','Name','convInp')
+    batchNormalizationLayer('Name','BNInp')
+    reluLayer('Name','reluInp')
+    
+    
+    
+    convolutionalUnit(netWidth,1,'S1U1')
+    additionLayer(2,'Name','add11')
+    reluLayer('Name','relu11')
+    convolutionalUnit(netWidth,1,'S1U2')
+    additionLayer(2,'Name','add12')
+    reluLayer('Name','relu12')
+    
+    convolutionalUnit(2*netWidth,2,'S2U1')
+    additionLayer(2,'Name','add21')
+    reluLayer('Name','relu21')
+    convolutionalUnit(2*netWidth,1,'S2U2')
+    additionLayer(2,'Name','add22')
+    reluLayer('Name','relu22')
+    
+    convolutionalUnit(4*netWidth,2,'S3U1')
+    additionLayer(2,'Name','add31')
+    reluLayer('Name','relu31')
+    convolutionalUnit(4*netWidth,1,'S3U2')
+    additionLayer(2,'Name','add32')
+    reluLayer('Name','relu32')
+    
+    averagePooling2dLayer(8,'Name','globalPool')
+    fullyConnectedLayer(10,'Name','fcFinal')
+    softmaxLayer('Name','softmax')
+   classificationLayer('Name','classoutput')
+%maeClassificationLayer('mae')
+ sseClassificationLayer('sse')
+
+    ];
+
+
+
+miniBatchSize = 128;
+learnRate = 0.1*miniBatchSize/128;
+valFrequency = floor(size(XTrain,4)/miniBatchSize);
+
+numUnits = 9;
+netWidth = 16;
+unitType="standard";
+lgraph = residualCIFARlgraph(netWidth,numUnits,unitType) 
+options = trainingOptions('sgdm', ...
+    'InitialLearnRate',learnRate, ...
+    'MaxEpochs',30, ...
+    'MiniBatchSize',miniBatchSize, ...
+    'VerboseFrequency',valFrequency, ...
+    'Shuffle','every-epoch', ...
+    'Plots','training-progress', ...
+    'Verbose',false, ...
+    'ValidationData',{XValidation,YValidation}, ...
+    'ValidationFrequency',valFrequency, ...
+    'LearnRateSchedule','piecewise', ...
+    'LearnRateDropFactor',0.1, ...
+    'LearnRateDropPeriod',60);
+
+
+    [trainedNet,tr] = trainNetwork(augimdsTrain,lgraph,options);
+    
+[YValPred,probs] = classify(trainedNet,XValidation);
+validationError = mean(YValPred ~= YValidation);
+accuracy=mean(YValPred == YValidation)*100;
+
+LOSS=tr.TrainingLoss;
+ Accuracy=tr.TrainingAccuracy;
+ 
+ 
+YTrainPred = classify(trainedNet,XTrain);
+trainError = mean(YTrainPred ~= YTrain);
+disp("Training error: " + trainError*100 + "%")
+disp("Validation error: " + validationError*100 + "%")
+
+
+figure(1)
+ plot(smooth(Accuracy),'LineWidth',2)
+ xlabel('Iterations')  , ylabel('Accuracy (%)')
+ title('Accuracy')
+ legend('Accuracy')
+ grid on 
+ 
+  figure(2)
+ plot(smooth(LOSS),'LineWidth',2)
+ xlabel('Iterations')  , ylabel('LOSS (%)')
+ title('losss')
+ legend('LOSS ')
+ grid on 
+ 
+ 
+
+figure('Units','normalized','Position',[0.2 0.2 0.4 0.4]);
+cm = confusionchart(YValidation,YValPred);
+cm.Title = 'Confusion Matrix for Validation Data';
+cm.ColumnSummary = 'column-normalized';
+cm.RowSummary = 'row-normalized';
+
+
+ 
+save trainednet_sgdm_sse trainedNet accuracy 
+  
+ %loss and accuracy plotting
+ figure(1)
+ plot(smooth(Accuracy),'LineWidth',2)
+ xlabel('Iterations')  , ylabel('Accuracy (%)')
+ title('Accuracy')
+ legend('Accuracy')
+ grid on 
+ 
+  figure(2)
+ plot(smooth(LOSS),'LineWidth',2)
+ xlabel('Iterations')  , ylabel('LOSS (%)')
+ title('losss')
+ legend('LOSS ')
+ grid on 
